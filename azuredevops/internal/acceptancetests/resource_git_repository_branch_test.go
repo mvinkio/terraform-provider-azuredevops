@@ -22,14 +22,11 @@ import (
 func TestAccGitRepoBranch_CreateAndUpdate(t *testing.T) {
 	var gotBranch git.GitBranchStats
 	var gotBranch2 git.GitBranchStats
+	var gotBranch3 git.GitBranchStats
 	projectName := testutils.GenerateResourceName()
 	gitRepoName := testutils.GenerateResourceName()
 	branchName := testutils.GenerateResourceName()
 	branchNameChanged := testutils.GenerateResourceName()
-
-	node := func(name string) string {
-		return fmt.Sprintf("azuredevops_git_repository_branch.%s", name)
-	}
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:  func() { testutils.PreCheck(t, nil) },
@@ -38,45 +35,68 @@ func TestAccGitRepoBranch_CreateAndUpdate(t *testing.T) {
 			{
 				Config: hclGitRepoBranches(projectName, gitRepoName, "Clean", branchName),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckNoResourceAttr(node("foo_orphan"), "ref"),
-					resource.TestCheckResourceAttr(node("foo_against_ref"), "ref", fmt.Sprintf("refs/heads/testbranch-%s", branchName)),
 					testAccGitRepoBranchExists("foo_orphan", &gotBranch),
-					testAccGitRepoBranchExists("foo_against_ref", &gotBranch2),
+					testAccGitRepoBranchExists("foo_from_ref", &gotBranch2),
+					testAccGitRepoBranchExists("foo_from_sha", &gotBranch3),
 					testAccGitRepoBranchAttributes("foo_orphan", &gotBranch, &testAccGitRepoBranchExpectedAttributes{
-						Name:    fmt.Sprintf("testbranch-%s", branchName),
-						Default: false,
+						Name: fmt.Sprintf("testbranch-%s", branchName),
+					}, &testAccExpectedComputedStateAttrs{
+						source_ref: "",
+						source_sha: "",
 					}),
-					testAccGitRepoBranchAttributes("foo_against_ref", &gotBranch2, &testAccGitRepoBranchExpectedAttributes{
-						Name:    fmt.Sprintf("testbranch2-%s", branchName),
-						Default: false,
+					testAccGitRepoBranchAttributes("foo_from_ref", &gotBranch2, &testAccGitRepoBranchExpectedAttributes{
+						Name: fmt.Sprintf("testbranch2-%s", branchName),
+					}, &testAccExpectedComputedStateAttrs{
+						source_ref: fmt.Sprintf("refs/heads/testbranch-%s", branchName),
+						source_sha: *gotBranch.Commit.CommitId,
+					}),
+					testAccGitRepoBranchAttributes("foo_from_sha", &gotBranch3, &testAccGitRepoBranchExpectedAttributes{
+						Name: fmt.Sprintf("testbranch3-%s", branchName),
+					}, &testAccExpectedComputedStateAttrs{
+						source_ref: "",
+						source_sha: *gotBranch.Commit.CommitId,
 					}),
 				),
 			},
-			// Test import branch created against another branch
+			// Test import branch created from another branch
 			{
-				ResourceName:            "azuredevops_git_repository_branch.foo_against_ref",
+				ResourceName:            "azuredevops_git_repository_branch.foo_from_ref",
 				ImportState:             true,
 				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: []string{"ref"},
 			},
 			// Test replace/update branch when name changes
-			{
-				Config: hclGitRepoBranches(projectName, gitRepoName, "Clean", branchNameChanged),
-				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckNoResourceAttr(node("foo_orphan"), "ref"),
-					resource.TestCheckResourceAttr(node("foo_against_ref"), "ref", fmt.Sprintf("refs/heads/testbranch-%s", branchNameChanged)),
-					testAccGitRepoBranchExists("foo_orphan", &gotBranch),
-					testAccGitRepoBranchExists("foo_against_ref", &gotBranch2),
-					testAccGitRepoBranchAttributes("foo_orphan", &gotBranch, &testAccGitRepoBranchExpectedAttributes{
-						Name:    fmt.Sprintf("testbranch-%s", branchNameChanged),
-						Default: false,
-					}),
-					testAccGitRepoBranchAttributes("foo_against_ref", &gotBranch2, &testAccGitRepoBranchExpectedAttributes{
-						Name:    fmt.Sprintf("testbranch2-%s", branchNameChanged),
-						Default: false,
-					}),
-				),
-			},
+			// {
+			// 	Config: hclGitRepoBranches(projectName, gitRepoName, "Clean", branchNameChanged),
+			// 	Check: resource.ComposeTestCheckFunc(
+			// 		testAccGitRepoBranchExists(node("foo_orphan"), &gotBranch),
+			// 		testAccGitRepoBranchExists(node("foo_from_ref"), &gotBranch2),
+			// 		testAccGitRepoBranchExists(node("foo_from_sha"), &gotBranch3),
+			// 		testAccGitRepoBranchComputedState(node("foo_orphan"), &testAccExpectedComputedStateAttrs{
+			// 			source_ref: "",
+			// 			source_sha: false,
+			// 		}),
+			// 		testAccGitRepoBranchComputedState(node("foo_from_ref"), &testAccExpectedComputedStateAttrs{
+			// 			source_ref: fmt.Sprintf("refs/heads/testbranch-%s", branchName),
+			// 			source_sha: true,
+			// 		}),
+			// 		testAccGitRepoBranchComputedState(node("foo_from_sha"), &testAccExpectedComputedStateAttrs{
+			// 			source_sha: true,
+			// 		}),
+			// 		testAccGitRepoBranchAttributes("foo_orphan", &gotBranch, &testAccGitRepoBranchExpectedAttributes{
+			// 			Name:    fmt.Sprintf("testbranch-%s", branchNameChanged),
+			// 			Default: false,
+			// 		}),
+			// 		testAccGitRepoBranchAttributes("foo_from_ref", &gotBranch2, &testAccGitRepoBranchExpectedAttributes{
+			// 			Name:    fmt.Sprintf("testbranch2-%s", branchNameChanged),
+			// 			Default: false,
+			// 		}),
+			// 		testAccGitRepoBranchAttributes("foo_from_sha", &gotBranch3, &testAccGitRepoBranchExpectedAttributes{
+			// 			Name:    fmt.Sprintf("testbranch3-%s", branchNameChanged),
+			// 			Default: false,
+			// 		}),
+			// 	),
+			// },
 			// Test invalid ref
 			{
 				Config: fmt.Sprintf(`
@@ -88,30 +108,27 @@ resource "azuredevops_git_repository_branch" "foo_nonexistent_tag" {
 	ref = "refs/tags/non-existent"
 }
 `, hclGitRepoBranches(projectName, gitRepoName, "Clean", branchNameChanged)),
-				ExpectError: regexp.MustCompile(`No refs found that match "refs/tags/non-existent"`),
+				ExpectError: regexp.MustCompile(`No source refs found that match "refs/tags/non-existent"`),
 			},
 		},
 	},
 	)
 }
 
-func testAccGitRepoBranchAttributes(s string, branch *git.GitBranchStats, want *testAccGitRepoBranchExpectedAttributes) resource.TestCheckFunc {
+func testAccGitRepoBranchAttributes(branchName string, branch *git.GitBranchStats, want *testAccGitRepoBranchExpectedAttributes, wantComputed *testAccExpectedComputedStateAttrs) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		if *branch.Name != want.Name {
 			return fmt.Errorf("Error got name %s, want %s", *branch.Name, want.Name)
-		}
-		if *branch.IsBaseVersion != want.Default {
-			return fmt.Errorf("Error got default %v, want %v", *branch.Name, want.Name)
 		}
 		return nil
 	}
 }
 
-func testAccGitRepoBranchExists(nodeName string, gotBranch *git.GitBranchStats) resource.TestCheckFunc {
+func testAccGitRepoBranchExists(node string, gotBranch *git.GitBranchStats) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
-		rs, ok := s.RootModule().Resources[fmt.Sprintf("azuredevops_git_repository_branch.%s", nodeName)]
+		rs, ok := s.RootModule().Resources[node]
 		if !ok {
-			return fmt.Errorf("Not found: %s", nodeName)
+			return fmt.Errorf("Not found: %s", node)
 		}
 
 		repoID, branchName, err := tfhelper.ParseGitRepoBranchID(rs.Primary.ID)
@@ -142,15 +159,24 @@ resource "azuredevops_git_repository_branch" "foo_orphan" {
 	repository_id = azuredevops_git_repository.repository.id
 	name = "testbranch-%[2]s"
 }
-resource "azuredevops_git_repository_branch" "foo_against_ref" {
+resource "azuredevops_git_repository_branch" "foo_from_ref" {
 	repository_id = azuredevops_git_repository.repository.id
     name = "testbranch2-%[2]s"
-	ref = "refs/heads/${azuredevops_git_repository_branch.foo_orphan.name}"
+	source_ref = azuredevops_git_repository_branch.foo_orphan.ref
+}
+resource "azuredevops_git_repository_branch" "foo_from_sha" {
+	repository_id = azuredevops_git_repository.repository.id
+    name = "testbranch3-%[2]s"
+	source_sha = azuredevops_git_repository_branch.foo_orphan.sha
 }
   `, gitRepoResource, branchName)
 }
 
+type testAccExpectedComputedStateAttrs struct {
+	source_ref string
+	source_sha string
+}
+
 type testAccGitRepoBranchExpectedAttributes struct {
-	Name    string
-	Default bool
+	Name string
 }

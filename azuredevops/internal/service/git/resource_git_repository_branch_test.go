@@ -28,7 +28,7 @@ func TestGitRepositoryBranch_Create(t *testing.T) {
 		want diag.Diagnostics
 	}{
 		{
-			"When ref is not given, create push does not swallow error",
+			"When source_ref is not given, create push does not swallow error",
 			func(g *azdosdkmocks.MockGitClient) args {
 				clients := &client.AggregatedClient{
 					GitReposClient: g,
@@ -51,31 +51,31 @@ func TestGitRepositoryBranch_Create(t *testing.T) {
 			diag.FromErr(fmt.Errorf("Error initialising new branch: an-error")),
 		},
 		{
-			"When ref is given, refs update does not swallow error",
+			"When source_ref is given, refs update does not swallow error",
 			func(g *azdosdkmocks.MockGitClient) args {
 				clients := &client.AggregatedClient{
 					GitReposClient: g,
 					Ctx:            context.Background(),
 				}
 				d := schema.TestResourceDataRaw(t, ResourceGitRepositoryBranch().Schema, nil)
-				ref := "refs/heads/another-branch"
+				source_ref := "refs/heads/another-branch"
 				commit := "a-commit"
 				branchName := "a-branch"
 				repoId := "a-repo"
-				d.Set("ref", ref)
+				d.Set("source_ref", source_ref)
 				d.Set("name", branchName)
 				d.Set("repository_id", repoId)
 
 				g.EXPECT().
 					GetRefs(clients.Ctx, git.GetRefsArgs{
 						RepositoryId: &repoId,
-						Filter:       converter.String(strings.TrimPrefix(ref, "refs/")),
+						Filter:       converter.String(strings.TrimPrefix(source_ref, "refs/")),
 						Top:          converter.Int(1),
 						PeelTags:     converter.Bool(true),
 					}).
 					Return(&git.GetRefsResponseValue{
 						Value: []git.GitRef{{
-							Name:     &ref,
+							Name:     &source_ref,
 							ObjectId: &commit,
 						}},
 					}, nil)
@@ -96,7 +96,7 @@ func TestGitRepositoryBranch_Create(t *testing.T) {
 					clients,
 				}
 			},
-			diag.FromErr(fmt.Errorf("Error creating branch against ref \"refs/heads/another-branch\": an-error")),
+			diag.FromErr(fmt.Errorf("Error creating branch \"a-branch\": an-error")),
 		},
 		{
 			"When invalid RefUpdate UpdateStatus, throw error",
@@ -106,24 +106,24 @@ func TestGitRepositoryBranch_Create(t *testing.T) {
 					Ctx:            context.Background(),
 				}
 				d := schema.TestResourceDataRaw(t, ResourceGitRepositoryBranch().Schema, nil)
-				ref := "refs/heads/another-branch"
+				source_ref := "refs/heads/another-branch"
 				commit := "a-commit"
 				branchName := "a-branch"
 				repoId := "a-repo"
-				d.Set("ref", ref)
+				d.Set("source_ref", source_ref)
 				d.Set("name", branchName)
 				d.Set("repository_id", repoId)
 
 				g.EXPECT().
 					GetRefs(clients.Ctx, git.GetRefsArgs{
 						RepositoryId: &repoId,
-						Filter:       converter.String(strings.TrimPrefix(ref, "refs/")),
+						Filter:       converter.String(strings.TrimPrefix(source_ref, "refs/")),
 						Top:          converter.Int(1),
 						PeelTags:     converter.Bool(true),
 					}).
 					Return(&git.GetRefsResponseValue{
 						Value: []git.GitRef{{
-							Name:     &ref,
+							Name:     &source_ref,
 							ObjectId: &commit,
 						}},
 					}, nil)
@@ -147,7 +147,7 @@ func TestGitRepositoryBranch_Create(t *testing.T) {
 					clients,
 				}
 			},
-			diag.FromErr(fmt.Errorf("Error creating branch against ref \"refs/heads/another-branch\": Error got invalid GitRefUpdate.UpdateStatus: invalidRefName")),
+			diag.FromErr(fmt.Errorf("Error creating branch \"a-branch\": Error got invalid GitRefUpdate.UpdateStatus: invalidRefName")),
 		},
 	}
 	for _, tt := range tests {
