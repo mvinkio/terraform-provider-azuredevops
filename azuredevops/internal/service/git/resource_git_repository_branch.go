@@ -48,6 +48,7 @@ func ResourceGitRepositoryBranch() *schema.Resource {
 				Type:         schema.TypeString,
 				Optional:     true,
 				ForceNew:     true,
+				Computed:     true,
 				ValidateFunc: validation.StringIsNotEmpty,
 			},
 			"is_default_branch": {
@@ -106,7 +107,7 @@ func resourceGitRepositoryBranchCreate(ctx context.Context, d *schema.ResourceDa
 		}
 
 		if len(gotRefs.Value) == 0 {
-			return diag.FromErr(fmt.Errorf("No refs found that match %q.", filter))
+			return diag.FromErr(fmt.Errorf("No refs found that match source_ref %q.", sourceRefName))
 		}
 
 		gotRef := gotRefs.Value[0]
